@@ -52,11 +52,11 @@ uploaded_file = st.file_uploader("📷 Upload a handwritten image", type=["png",
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="📸 Original Image", use_column_width=True)
+    st.image(image, caption="📸 Original Image", use_container_width=True)
 
     with st.spinner("⏳ Preprocessing and recognizing text..."):
         preprocessed_image = preprocess_image(image)
-        st.image(preprocessed_image, caption="🧪 Preprocessed Image", use_column_width=True)
+        st.image(preprocessed_image, caption="🧪 Preprocessed Image", use_container_width=True)
 
         # Load large model (swap with 'base' if needed)
         processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
