@@ -3,4 +3,6 @@ transformers==4.50.3
 torch==2.2.0
 Pillow
 numpy<2
+opencv-python-headless
+
 
