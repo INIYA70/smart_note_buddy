@@ -1,19 +1,14 @@
 import cv2
+import pytesseract
 import numpy as np
 import streamlit as st
 from PIL import Image
-import pytesseract
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-
-# Load model and processor
-processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
 
 st.set_page_config(page_title="Smart Note Buddy", layout="wide")
 st.title("📝 Smart Note Buddy")
-st.markdown("Extract handwritten text from your notes with AI.")
+st.subheader("Convert handwritten notes into editable text")
 
-uploaded_file = st.file_uploader("Upload an image of your notes", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload an image of handwritten notes", type=["png", "jpg", "jpeg"])
 
 def rotate_image(image, angle):
     (h, w) = image.shape[:2]
@@ -21,29 +16,34 @@ def rotate_image(image, angle):
     rotated = cv2.warpAffine(image, M, (w, h))
     return rotated
 
-def predict_text(image: Image.Image) -> str:
-    pixel_values = processor(images=image, return_tensors="pt").pixel_values
-    generated_ids = model.generate(pixel_values)
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return generated_text
+def preprocess_image(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    return thresh
+
+def extract_text(image):
+    custom_config = r'--oem 3 --psm 6'
+    text = pytesseract.image_to_string(image, config=custom_config)
+    return text
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    image = cv2.imdecode(file_bytes, 1)
+    
+    st.image(image, caption='Original Image', use_column_width=True)
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        angle = st.slider("Rotate Image", -180, 180, 0)
-        if angle != 0:
-            open_cv_image = np.array(image)
-            open_cv_image = open_cv_image[:, :, ::-1].copy()
-            rotated = rotate_image(open_cv_image, angle)
-            image = Image.fromarray(cv2.cvtColor(rotated, cv2.COLOR_BGR2RGB))
-            st.image(image, caption="Rotated Image", use_column_width=True)
+    angle = st.slider("Rotate image (if text is tilted)", -180, 180, 0)
+    rotated_image = rotate_image(image, angle)
+    
+    st.image(rotated_image, caption='Rotated Image', use_column_width=True)
 
-    with col2:
-        if st.button("Extract Text"):
-            with st.spinner("Analyzing handwriting..."):
-                extracted_text = predict_text(image)
-                st.success("Text Extraction Complete ✅")
-                st.text_area("Extracted Text", extracted_text, height=200)
+    preprocessed = preprocess_image(rotated_image)
+
+    st.image(preprocessed, caption='Preprocessed Image', use_column_width=True)
+
+    if st.button("Extract Text"):
+        with st.spinner("Extracting text..."):
+            text = extract_text(preprocessed)
+        st.success("Here is the extracted text:")
+        st.text_area("Output Text", text, height=300)
