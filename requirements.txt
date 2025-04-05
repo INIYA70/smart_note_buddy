@@ -1,5 +1,6 @@
 streamlit
 torch
 torchvision
-pillow
-requests
+transformers
+pytesseract
+Pillow
