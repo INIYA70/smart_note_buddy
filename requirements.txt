@@ -1,6 +1,5 @@
 streamlit
-transformers
 torch
-Pillow
-sentencepiece
-opencv-python
+torchvision
+pillow
+requests
