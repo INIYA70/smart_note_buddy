@@ -1,3 +1,13 @@
+import asyncio
+import sys
+
+# Fix for Python 3.10+ asyncio issues in Streamlit
+if sys.platform.startswith('win') or sys.version_info >= (3, 10):
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except:
+        pass
+
 import streamlit as st
 from PIL import Image
 import io
@@ -46,4 +56,3 @@ if uploaded_file:
         qa = pipeline("question-answering")
         answer = qa(question=user_question, context=extracted_text)
         st.write("✅ Answer:", answer['answer'])
-
