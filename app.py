@@ -34,4 +34,39 @@ def preprocess_image(image):
         else:
             angle = -angle
         (h, w) = thresh.shape
-        M = cv2.getRotationMatrix2D((w // 2, h
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        deskewed = cv2.warpAffine(thresh, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    else:
+        deskewed = thresh
+
+    return Image.fromarray(deskewed)
+
+# ---------------- Streamlit UI ---------------- #
+st.set_page_config(page_title="Smart Note Buddy 📝", layout="centered")
+st.title("🧠 Smart Note Buddy - Handwritten OCR")
+
+uploaded_file = st.file_uploader("📷 Upload a handwritten image", type=["png", "jpg", "jpeg"])
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="📸 Original Image", use_container_width=True)
+
+    with st.spinner("⏳ Preprocessing and recognizing text..."):
+        preprocessed_image = preprocess_image(image)
+        st.image(preprocessed_image, caption="🧪 Preprocessed Image", use_container_width=True)
+
+        # Load TrOCR (Large) model
+        processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
+        model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+
+        # Predict
+        pixel_values = processor(images=preprocessed_image, return_tensors="pt").pixel_values
+        generated_ids = model.generate(pixel_values)
+        predicted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    st.subheader("📄 Extracted Text:")
+    st.success(predicted_text)
+
+    st.markdown("---")
+    st.caption("🔧 Powered by TrOCR + Preprocessing | Created by Iniya Swedha 😊")
