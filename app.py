@@ -1,22 +1,21 @@
-# app.py
-
-import sys
-if sys.platform.startswith('win'):
-    import asyncio
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-import streamlit as st
-from PIL import Image
+import os
 import cv2
 import numpy as np
-from transformers import VisionEncoderDecoderModel, TrOCRProcessor
+from PIL import Image
+from flask import Flask, request, jsonify, render_template
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 import torch
 
-# ---------------- Preprocessing Function ---------------- #
+app = Flask(__name__)
+
+# Load the TrOCR model and processor
+processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
+
 def preprocess_image(image):
     img = np.array(image.convert("RGB"))
 
-    # 🔍 Enlarge image
+    # Resize for better OCR results
     img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
     # Convert to grayscale
@@ -25,7 +24,7 @@ def preprocess_image(image):
     # Denoise
     denoised = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # ✅ Adaptive thresholding
+    # Adaptive threshold
     thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                    cv2.THRESH_BINARY, 11, 2)
 
@@ -45,38 +44,40 @@ def preprocess_image(image):
     else:
         deskewed = thresh
 
-    # Convert grayscale to RGB for model
+    # Convert to RGB
     return Image.fromarray(cv2.cvtColor(deskewed, cv2.COLOR_GRAY2RGB))
 
+@app.route("/")
+def index():
+    return render_template("index.html")
 
+@app.route("/predict", methods=["POST"])
+def predict():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-        
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
 
-# ---------------- Streamlit UI ---------------- #
-st.set_page_config(page_title="Smart Note Buddy 📝", layout="centered")
-st.title("🧠 Smart Note Buddy - Handwritten OCR")
-
-uploaded_file = st.file_uploader("📷 Upload a handwritten image", type=["png", "jpg", "jpeg"])
-
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="📸 Original Image", use_container_width=True)
-
-    with st.spinner("⏳ Preprocessing and recognizing text..."):
+    try:
+        image = Image.open(file.stream)
         preprocessed_image = preprocess_image(image)
-        st.image(preprocessed_image, caption="🧪 Preprocessed Image", use_container_width=True)
 
-        # Load model
-        processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
-        model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+        # Ensure image has correct shape
+        if preprocessed_image.mode != "RGB":
+            preprocessed_image = preprocessed_image.convert("RGB")
 
-        # Predict
         pixel_values = processor(images=preprocessed_image, return_tensors="pt").pixel_values
+
         generated_ids = model.generate(pixel_values)
-        predicted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    st.subheader("📄 Extracted Text:")
-    st.success(predicted_text)
+        return jsonify({"extracted_text": generated_text})
 
-    st.markdown("---")
-    st.caption("🔧 Powered by TrOCR + Preprocessing | Created by Iniya Swedha 😊")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
