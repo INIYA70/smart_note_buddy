@@ -16,16 +16,20 @@ import torch
 def preprocess_image(image):
     img = np.array(image.convert("RGB"))
 
+    # 🔍 Enlarge image
+    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Denoise with Gaussian Blur
+    # Denoise
     denoised = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Thresholding using OTSU
-    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # ✅ Adaptive thresholding
+    thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 11, 2)
 
-    # Deskew the image
+    # Deskew
     coords = np.column_stack(np.where(thresh > 0))
     if coords.shape[0] > 0:
         angle = cv2.minAreaRect(coords)[-1]
@@ -41,8 +45,9 @@ def preprocess_image(image):
     else:
         deskewed = thresh
 
-    # 🔥 Convert to RGB to make it model-compatible
+    # Convert grayscale to RGB for model
     return Image.fromarray(cv2.cvtColor(deskewed, cv2.COLOR_GRAY2RGB))
+
 
 
         
