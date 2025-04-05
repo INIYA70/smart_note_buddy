@@ -5,6 +5,8 @@ Pillow
 numpy<2
 opencv-python-headless
 pytesseract
+flask
+
 
 
 
