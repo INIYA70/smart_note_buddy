@@ -41,7 +41,11 @@ def preprocess_image(image):
     else:
         deskewed = thresh
 
-    return Image.fromarray(deskewed)
+    # 🔥 Convert to RGB to make it model-compatible
+    return Image.fromarray(cv2.cvtColor(deskewed, cv2.COLOR_GRAY2RGB))
+
+
+        
 
 # ---------------- Streamlit UI ---------------- #
 st.set_page_config(page_title="Smart Note Buddy 📝", layout="centered")
