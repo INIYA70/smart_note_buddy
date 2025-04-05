@@ -12,15 +12,6 @@ import numpy as np
 from transformers import VisionEncoderDecoderModel, TrOCRProcessor
 import torch
 
-# ---------------- Model Load (Run Once) ---------------- #
-@st.cache_resource
-def load_model_and_processor():
-    processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
-    model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    return processor, model, device
-
 # ---------------- Preprocessing Function ---------------- #
 def preprocess_image(image):
     img = np.array(image.convert("RGB"))
@@ -28,14 +19,10 @@ def preprocess_image(image):
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # CLAHE for better contrast (adaptive histogram equalization)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    contrast_enhanced = clahe.apply(gray)
+    # Denoise with Gaussian Blur
+    denoised = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Denoise
-    denoised = cv2.GaussianBlur(contrast_enhanced, (5, 5), 0)
-
-    # Threshold
+    # Thresholding
     _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     # Deskew
@@ -47,4 +34,4 @@ def preprocess_image(image):
         else:
             angle = -angle
         (h, w) = thresh.shape
-        M = cv2.getRotationMatrix2D((w // 2, h // 2), angle
+        M = cv2.getRotationMatrix2D((w // 2, h
