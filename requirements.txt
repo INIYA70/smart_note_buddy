@@ -1,5 +1,6 @@
 streamlit
-pytesseract
 transformers
-Pillow
 torch
+Pillow
+sentencepiece
+opencv-python
