@@ -1,57 +1,83 @@
 # app.py
 
 import sys
+import asyncio
+import streamlit as st
+from PIL import Image
 import numpy as np
 import cv2
-import torch
-from PIL import Image
-import streamlit as st
+import pytesseract
 from transformers import VisionEncoderDecoderModel, TrOCRProcessor
+import torch
 
-# Fix for Windows platform issue with asyncio
+# Fix for Windows event loop error
 if sys.platform.startswith('win'):
-    import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Title
-st.title("📝 Handwritten Text Recognition using TrOCR (Enhanced Accuracy)")
+# Preprocessing function
+def preprocess_image(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY_INV, 11, 2)
 
-# Upload section
-uploaded_file = st.file_uploader("Upload an image of handwritten text", type=["png", "jpg", "jpeg"])
+    # Morph operations to clean noise
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    morph = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
-# Preprocessing function for TrOCR
-def preprocess_for_trocr(pil_image):
-    # Convert PIL to OpenCV format
-    image = np.array(pil_image)
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    
-    # Resize to standard input size for TrOCR (you can tweak this)
-    resized = cv2.resize(gray, (384, 384))
-    
-    # Normalize image (if needed, we can do CLAHE or similar here too)
-    norm = cv2.cvtColor(resized, cv2.COLOR_GRAY2RGB)
+    return morph
 
-    # Return preprocessed PIL image
-    return Image.fromarray(norm)
+# OCR using Tesseract
+def extract_text_tesseract(image):
+    processed = preprocess_image(image)
+    custom_config = r'--oem 3 --psm 6'
+    text = pytesseract.image_to_string(processed, config=custom_config)
+    return text.strip()
+
+# OCR using TrOCR
+def extract_text_trocr(image_pil):
+    processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+    model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
+    pixel_values = processor(images=image_pil, return_tensors="pt").pixel_values
+    generated_ids = model.generate(pixel_values)
+    text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return text.strip()
+
+# Blur detection
+def is_blurry(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    fm = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return fm < 100
+
+# Streamlit app
+st.title("📝 Smart OCR: Handwritten Text Recognition")
+uploaded_file = st.file_uploader("Upload a handwritten image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
-    # Display uploaded image
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    image_pil = Image.open(uploaded_file).convert("RGB")
+    image_cv = np.array(image_pil)
+    st.image(image_pil, caption="Uploaded Image", use_column_width=True)
 
-    with st.spinner("Processing image..."):
-        # Preprocess image
-        processed_image = preprocess_for_trocr(image)
+    if is_blurry(image_cv):
+        st.warning("⚠️ The image appears blurry. Try retaking it in better lighting.")
 
-        # Load larger model for better accuracy
-        processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
-        model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+    # Run both OCR engines
+    st.info("Running TrOCR model...")
+    trocr_text = extract_text_trocr(image_pil)
 
-        # Run inference
-        pixel_values = processor(images=processed_image, return_tensors="pt").pixel_values
-        generated_ids = model.generate(pixel_values)
-        predicted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    st.info("Running Tesseract OCR...")
+    tesseract_text = extract_text_tesseract(image_cv)
 
-    # Display result
-    st.subheader("🔍 Predicted Text:")
-    st.write(predicted_text)
+    # Display both results
+    st.subheader("TrOCR Output")
+    st.write(trocr_text or "[No text detected]")
+
+    st.subheader("Tesseract Output")
+    st.write(tesseract_text or "[No text detected]")
+
+    # Choose better output
+    final_text = trocr_text if len(trocr_text) >= len(tesseract_text) else tesseract_text
+    st.success("✅ Final Predicted Text:")
+    st.code(final_text)
+
+    st.caption("Tip: For best results, avoid shadows and blur. But this app handles many real-world issues too!")
